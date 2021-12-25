@@ -3,8 +3,11 @@ import * as THREE from 'three';
 import CANNON from 'cannon';
 import { useRef, useState } from 'react';
 import { useEffect } from 'react';
-import BrickTexture from '../assets/BrickMap.png';
-import {updatePhysics} from './utils/updatePhysics'
+import {updatePhysics} from './utils/updatePhysics';
+import {cutBox} from './utils/cutBox';
+import {addOverhang} from './utils/addOverhang';
+import {addLayer} from './utils/addLayer';
+import {missedTheSpot} from './utils/missedTheSpot';
 
 
 let camera, scene, renderer;
@@ -21,9 +24,6 @@ export function InitGame() {
     const canvasRef = useRef()
     const instructionsRef = useRef()
     const resultsRef = useRef()
-    const textureLoader = new THREE.TextureLoader()
-    const legoTexture = textureLoader.load(BrickTexture)
-
 
     const [score,setScore] = useState(0)
     const [finalScore,setFinalScore] = useState(0)
@@ -56,9 +56,9 @@ export function InitGame() {
 
 
         //Inital Steady Bricks
-        addLayer(0, 0, originalBoxSize, originalBoxSize);
-        addLayer(-2, 0, originalBoxSize, originalBoxSize);
-        addLayer(-2, -2, originalBoxSize, originalBoxSize);
+        addLayer({x:0, y:0, width:originalBoxSize, depth:originalBoxSize,scene,world,stack,boxHeight});
+        addLayer({x:-2, y:0, width:originalBoxSize, depth:originalBoxSize,scene,world,stack,boxHeight});
+        addLayer({x:-2, y:-2, width:originalBoxSize, depth:originalBoxSize,scene,world,stack,boxHeight});
 
         // Set up lights
         const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
@@ -120,12 +120,12 @@ export function InitGame() {
                 const mesh = scene.children.find((c) => c.type === "Mesh");
                 scene.remove(mesh);
               }
-          
+
               // Foundation Brick
-              addLayer(0, 0, originalBoxSize, originalBoxSize);
+              addLayer({x:0, z:0, width:originalBoxSize, depth:originalBoxSize,scene,world,stack,boxHeight});
           
               // First Brick
-              addLayer(-10, 0, originalBoxSize, originalBoxSize, "x");
+              addLayer({x:-10, z:0, width:originalBoxSize, depth:originalBoxSize,direction:"x",scene,world,stack,boxHeight});
             }
           
             // Ground Plane
@@ -148,33 +148,6 @@ export function InitGame() {
               camera.position.set(4, 4, 4);
               camera.lookAt(0, 0, 0);
             }
-        }
-
-        function generateBox(x, y, z, width, depth, falls) {
-            // ThreeJS
-            const geometry = new THREE.BoxGeometry(width, boxHeight, depth);
-            const color = new THREE.Color(`hsl(${150 + stack.length * 4}, 100%, 50%)`);
-            const material = new THREE.MeshStandardMaterial({ color });
-            material.normalMap = legoTexture;
-            const mesh = new THREE.Mesh(geometry, material);
-            mesh.position.set(x, y, z);
-            scene.add(mesh);
-          
-            // CannonJS
-            const shape = new CANNON.Box(
-              new CANNON.Vec3(width / 2, boxHeight / 2, depth / 2)
-            );
-            let mass = falls ? 5 : 0;
-            const body = new CANNON.Body({ mass, shape });
-            body.position.set(x, y, z);
-            world.addBody(body);
-          
-            return {
-              threejs: mesh,
-              cannonjs: body,
-              width,
-              depth
-            };
         }
         
 
@@ -209,7 +182,7 @@ export function InitGame() {
               const overhangWidth = direction === "x" ? overhangSize : topLayer.width;
               const overhangDepth = direction === "z" ? overhangSize : topLayer.depth;
           
-              addOverhang(overhangX, overhangZ, overhangWidth, overhangDepth);
+              addOverhang(overhangX, overhangZ, overhangWidth, overhangDepth,stack,overhangs,scene,world);
           
               // Next Brick attributes
               const nextX = direction === "x" ? topLayer.threejs.position.x : -10;
@@ -218,61 +191,13 @@ export function InitGame() {
               const newDepth = topLayer.depth;
               const nextDirection = direction === "x" ? "z" : "x";
               setScore(score => score + 1)
-              addLayer(nextX, nextZ, newWidth, newDepth, nextDirection);
+              addLayer({x:nextX, z:nextZ, width:newWidth, depth:newDepth, direction:nextDirection,scene,world,stack,boxHeight});
             } else {
                 setFinalScore(stack.length - 2)
-                missedTheSpot();
+                missedTheSpot(scene,world,stack,gameEnded,setScore,resultsRef);
             }
           }
 
-        function missedTheSpot() {
-            const topLayer = stack[stack.length - 1];
-          
-            world.remove(topLayer.cannonjs);
-            scene.remove(topLayer.threejs);
-          
-            gameEnded = true;
-            setScore(0)
-            resultsRef.current.style.display = "flex";
-        }
-
-        function addLayer(x, z, width, depth, direction) {
-            const y = boxHeight * stack.length;
-            const layer = generateBox(x, y, z, width, depth, false);
-            layer.direction = direction;
-            stack.push(layer);
-        }
-          
-          
-        function cutBox(topLayer, overlap, size, delta) {
-            const direction = topLayer.direction;
-            const newWidth = direction === "x" ? overlap : topLayer.width;
-            const newDepth = direction === "z" ? overlap : topLayer.depth;
-          
-            // Update width and Depth
-            topLayer.width = newWidth;
-            topLayer.depth = newDepth;
-          
-            // Update ThreeJS model
-            topLayer.threejs.scale[direction] = overlap / size;
-            topLayer.threejs.position[direction] -= delta / 2;
-          
-            // Update CannonJS model
-            topLayer.cannonjs.position[direction] -= delta / 2;
-          
-            // Replace shape in Cannonjs to smaller one (can't update. Need to add new)
-            const shape = new CANNON.Box(
-              new CANNON.Vec3(newWidth / 2, boxHeight / 2, newDepth / 2)
-            );
-            topLayer.cannonjs.shapes = [];
-            topLayer.cannonjs.addShape(shape);
-        }
-          
-        function addOverhang(x, z, width, depth) {
-            const y = boxHeight * (stack.length - 1); // Add the new box on the same layer
-            const overhang = generateBox(x, y, z, width, depth, true);
-            overhangs.push(overhang);
-        }
 
         function animation() {
             const speed = 0.15;
@@ -285,7 +210,7 @@ export function InitGame() {
               topLayer.cannonjs.position[topLayer.direction] += speed;
         
               if (topLayer.threejs.position[topLayer.direction] > 10) {
-                missedTheSpot();
+                missedTheSpot(scene,world,stack,gameEnded,setScore,resultsRef);
               }
             } 
         
@@ -298,9 +223,7 @@ export function InitGame() {
             renderer.render(scene, camera);
         }
 
-        return(()=>{
-            canvasRef.current.removeChild(renderer.domElement);
-        })
+        return () => canvasRef.current.removeChild( renderer.domElement);
     },[])
 
 
