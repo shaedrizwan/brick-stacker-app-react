@@ -56,9 +56,9 @@ export function InitGame() {
 
 
         //Inital Steady Bricks
-        addLayer({x:0, y:0, width:originalBoxSize, depth:originalBoxSize,scene,world,stack,boxHeight});
-        addLayer({x:-2, y:0, width:originalBoxSize, depth:originalBoxSize,scene,world,stack,boxHeight});
-        addLayer({x:-2, y:-2, width:originalBoxSize, depth:originalBoxSize,scene,world,stack,boxHeight});
+        addLayer({x:0, z:0, width:originalBoxSize, depth:originalBoxSize,scene,world,stack,boxHeight});
+        addLayer({x:-2, z:0, width:originalBoxSize, depth:originalBoxSize,scene,world,stack,boxHeight});
+        addLayer({x:-2, z:-2, width:originalBoxSize, depth:originalBoxSize,scene,world,stack,boxHeight});
 
         // Set up lights
         const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
@@ -79,11 +79,7 @@ export function InitGame() {
         window.addEventListener("keydown", function (event) {
         if (event.key === " ") {
             event.preventDefault();
-            if(gameEnded){
-            startGame()
-            }else{
             eventHandler();
-            }
             return;
         }
         if (event.key === "R" || event.key === "r") {
